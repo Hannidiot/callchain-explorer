@@ -1,0 +1,48 @@
+{
+  "title": "Replace me",
+  "subtitle": "Add a short description of the flow this chain explains.",
+  "context": 4,
+  "repos": {
+    "repo-a": {
+      "root": "repos/repo-a",
+      "color": "#3b82f6",
+      "ref": "REPLACE_WITH_COMMIT"
+    },
+    "repo-b": {
+      "root": "repos/repo-b",
+      "color": "#8b5cf6",
+      "ref": "REPLACE_WITH_COMMIT"
+    }
+  },
+  "steps": [
+    {
+      "id": "first-step",
+      "repo": "repo-a",
+      "file": "REPLACE/path/to/file.ts",
+      "match": "REPLACE_WITH_SYMBOL_REGEX",
+      "symbol": "firstStep",
+      "note": "What this step does and why it matters. REPLACE THIS.",
+      "callsites": [
+        {
+          "match": "REPLACE_WITH_CALL_REGEX",
+          "label": "next hop"
+        }
+      ],
+      "edge": {
+        "type": "http",
+        "kind": "HTTP",
+        "label": "POST /endpoint",
+        "detail": "repo-a → repo-b · replace with the real transport"
+      }
+    },
+    {
+      "id": "second-step",
+      "repo": "repo-b",
+      "file": "REPLACE/path/to/file.py",
+      "match": "REPLACE_WITH_SYMBOL_REGEX",
+      "symbol": "secondStep",
+      "note": "The last step in the chain. REPLACE THIS.",
+      "callsites": []
+    }
+  ]
+}

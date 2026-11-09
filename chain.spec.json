@@ -1,0 +1,126 @@
+{
+  "title": "Placing an order, end to end",
+  "subtitle": "One checkout request fans out across five repositories. Each hop below is a real function: open a step to read the code, then grow the context around it in place.",
+  "context": 4,
+  "repos": {
+    "web-client": {
+      "root": "demo/repos/web-client",
+      "color": "#0ea5e9"
+    },
+    "api-gateway": {
+      "root": "demo/repos/api-gateway",
+      "color": "#3b82f6"
+    },
+    "order-service": {
+      "root": "demo/repos/order-service",
+      "color": "#8b5cf6"
+    },
+    "inventory-service": {
+      "root": "demo/repos/inventory-service",
+      "color": "#10b981"
+    },
+    "notifier-service": {
+      "root": "demo/repos/notifier-service",
+      "color": "#f59e0b"
+    }
+  },
+  "steps": [
+    {
+      "id": "submit-order",
+      "repo": "web-client",
+      "file": "src/checkout/submitOrder.ts",
+      "match": "export async function submitOrder",
+      "symbol": "submitOrder",
+      "note": "The checkout button calls submitOrder(). It flattens the cart into the payload the gateway expects and records analytics around the request.",
+      "callsites": [
+        { "match": "http\\.post<Order>", "label": "POST /orders" }
+      ],
+      "edge": {
+        "type": "http",
+        "kind": "HTTP",
+        "label": "POST /orders",
+        "detail": "web-client → api-gateway · JSON over HTTPS"
+      }
+    },
+    {
+      "id": "gateway-handler",
+      "repo": "api-gateway",
+      "file": "src/routes/orders.ts",
+      "match": "async function createOrderHandler",
+      "symbol": "createOrderHandler",
+      "note": "The gateway validates and rate-limits the public request, then forwards it to the internal order service. The browser never reaches order-service directly.",
+      "callsites": [
+        { "match": "orderClient\\.createOrder", "label": "POST /internal/orders" }
+      ],
+      "edge": {
+        "type": "http",
+        "kind": "HTTP",
+        "label": "POST /internal/orders",
+        "detail": "api-gateway → order-service · internal network"
+      }
+    },
+    {
+      "id": "create-order",
+      "repo": "order-service",
+      "file": "app/api/orders.py",
+      "match": "async def create_order\\(",
+      "symbol": "create_order",
+      "note": "The FastAPI handler reserves stock over gRPC, persists the order, then publishes an event. Note the second call marker below: it is the async branch of this chain.",
+      "callsites": [
+        { "match": "inventory\\.reserve", "label": "gRPC Reserve" },
+        { "match": "events\\.publish", "label": "publish order.created", "to": "publish-event" }
+      ],
+      "edge": {
+        "type": "grpc",
+        "kind": "gRPC",
+        "label": "InventoryService.Reserve",
+        "detail": "order-service → inventory-service · unary call, 2s deadline"
+      }
+    },
+    {
+      "id": "reserve-stock",
+      "repo": "inventory-service",
+      "file": "internal/reservation/service.go",
+      "match": "func \\(s \\*Service\\) Reserve\\(",
+      "symbol": "Service.Reserve",
+      "note": "The inventory service performs the reservation in one transaction: lock the SKUs, check availability, then insert the reservation row.",
+      "callsites": [
+        { "match": "s\\.store\\.WithTx", "label": "single DB transaction" }
+      ],
+      "edge": {
+        "type": "return",
+        "kind": "RETURN",
+        "label": "reservation confirmed",
+        "detail": "Reserve returns to create_order; the handler continues and publishes order.created"
+      }
+    },
+    {
+      "id": "publish-event",
+      "repo": "order-service",
+      "file": "app/events.py",
+      "match": "async def publish\\(self, topic",
+      "symbol": "EventBus.publish",
+      "note": "create_order does not wait for downstream consumers. publish() writes order.created to Kafka and returns.",
+      "callsites": [
+        { "match": "self\\._producer\\.send", "label": "order.created" }
+      ],
+      "edge": {
+        "type": "event",
+        "kind": "EVENT",
+        "label": "order.created",
+        "detail": "Kafka topic · at-least-once delivery → notifier-service"
+      }
+    },
+    {
+      "id": "notify-customer",
+      "repo": "notifier-service",
+      "file": "app/consumers/orders.py",
+      "match": "async def handle_order_created",
+      "symbol": "handle_order_created",
+      "note": "notifier-service reacts to the event, loads the customer, and sends the confirmation email. This is where the synchronous request chain becomes asynchronous work.",
+      "callsites": [
+        { "match": "Mailer\\.send_order_confirmation", "label": "confirmation email" }
+      ]
+    }
+  ]
+}

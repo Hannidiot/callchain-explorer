@@ -1,0 +1,2356 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="A generated, offline, single-file explorer for a cross-repository call chain."
+    />
+    <title>Placing an order, end to end · Call chain explorer</title>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("callchain-theme");
+          var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.dataset.theme = stored || (prefersDark ? "dark" : "light");
+        } catch (err) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+    <style>
+      /* ============================================================
+   Call chain explorer — single-file viewer
+   Light theme is the default; [data-theme="dark"] overrides.
+   ============================================================ */
+
+:root {
+  --bg: #f6f6f3;
+  --bg-2: #efefea;
+  --surface: #ffffff;
+  --surface-2: #fafaf8;
+  --code-bg: #fbfbf9;
+  --line: #e4e4dd;
+  --line-2: #d1d2ca;
+  --text: #14161a;
+  --text-2: #555c67;
+  --text-3: #828a96;
+  --accent: #2563eb;
+  --accent-soft: #e8efff;
+  --target: color-mix(in srgb, var(--accent) 7%, transparent);
+  --target-strong: color-mix(in srgb, var(--accent) 12%, transparent);
+  --callsite: #c2610b;
+  --callsite-soft: #fff2e0;
+  --shadow: 0 1px 2px rgba(20, 22, 26, 0.04), 0 10px 30px -18px rgba(20, 22, 26, 0.28);
+  --shadow-soft: 0 1px 2px rgba(20, 22, 26, 0.05);
+  --radius: 16px;
+  --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    "Noto Sans", sans-serif;
+  --mono: "Cascadia Code", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+[data-theme="dark"] {
+  --bg: #0b0d12;
+  --bg-2: #0e1117;
+  --surface: #12151d;
+  --surface-2: #0f1219;
+  --code-bg: #0c0f15;
+  --line: #232a38;
+  --line-2: #333c4e;
+  --text: #e7eaf1;
+  --text-2: #a6afbf;
+  --text-3: #6f7a8d;
+  --accent: #7aa2ff;
+  --accent-soft: #17233f;
+  --target: color-mix(in srgb, var(--accent) 12%, transparent);
+  --target-strong: color-mix(in srgb, var(--accent) 18%, transparent);
+  --callsite: #f0a64b;
+  --callsite-soft: #2a2013;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.32), 0 18px 44px -24px rgba(0, 0, 0, 0.75);
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.28);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  color: var(--text);
+  background:
+    radial-gradient(900px 520px at 12% -12%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%),
+    radial-gradient(760px 420px at 102% -4%, color-mix(in srgb, #8b5cf6 8%, transparent), transparent 62%),
+    var(--bg);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+p {
+  margin: 0;
+}
+
+code,
+kbd,
+pre {
+  font-family: var(--mono);
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 1rem;
+  z-index: 200;
+  background: var(--text);
+  color: var(--bg);
+  padding: 0.55rem 0.9rem;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+.skip-link:focus {
+  top: 0.75rem;
+}
+
+/* ---------- hero ---------- */
+
+.hero {
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 68%, transparent);
+}
+
+.hero-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 2.6rem 1.4rem 1.15rem;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.pulse {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+h1 {
+  margin: 0.55rem 0 0.55rem;
+  font-size: clamp(1.8rem, 3.4vw, 2.7rem);
+  line-height: 1.08;
+  letter-spacing: -0.032em;
+  font-weight: 720;
+}
+
+.subtitle {
+  max-width: 72ch;
+  color: var(--text-2);
+  font-size: 1rem;
+}
+
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 1rem;
+}
+
+.stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.74rem;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.22rem 0.58rem;
+  white-space: nowrap;
+}
+
+.stat b {
+  color: var(--text);
+  font-weight: 650;
+}
+
+/* ---------- toolbar ---------- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem 1.2rem;
+  flex-wrap: wrap;
+  margin-top: 1.25rem;
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-2);
+  border-radius: 999px;
+  padding: 0.28rem 0.62rem;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color 0.14s ease, background 0.14s ease, color 0.14s ease;
+}
+
+.filter:hover {
+  color: var(--text);
+  border-color: var(--line-2);
+}
+
+.filter[aria-pressed="true"] {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--repo, var(--accent)) 48%, var(--line));
+  background: color-mix(in srgb, var(--repo, var(--accent)) 10%, var(--surface));
+}
+
+.filter .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--repo, var(--text-3));
+  flex: 0 0 auto;
+}
+
+.filter .count {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-3);
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 0.3rem 0.55rem;
+  color: var(--text-3);
+}
+
+.search:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.search svg {
+  flex: 0 0 auto;
+  opacity: 0.8;
+}
+
+.search input {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.83rem;
+  width: 15.5rem;
+}
+
+.search input::placeholder {
+  color: var(--text-3);
+}
+
+.search kbd {
+  opacity: 0.65;
+}
+
+.btn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-2);
+  border-radius: 10px;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 550;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color 0.14s ease, color 0.14s ease, background 0.14s ease;
+}
+
+.btn:hover {
+  color: var(--text);
+  border-color: var(--line-2);
+  background: var(--surface-2);
+}
+
+.btn-icon {
+  width: 2.15rem;
+  padding: 0.4rem 0;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+/* ---------- minimap ---------- */
+
+.minimap {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 84%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.minimap-scroll {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0.5rem 1.4rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.minimap-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.map-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  border-radius: 8px;
+  padding: 0.26rem 0.45rem;
+  font-family: var(--mono);
+  font-size: 0.73rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.map-step:hover {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.map-step[data-active="true"] {
+  background: var(--surface);
+  border-color: var(--line-2);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+
+.map-step .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--repo, var(--text-3));
+}
+
+.map-step .num {
+  color: var(--text-3);
+  font-size: 0.68rem;
+}
+
+.map-arrow {
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 0.68rem;
+  opacity: 0.7;
+  padding: 0 0.05rem;
+}
+
+/* ---------- chain ---------- */
+
+.chain {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 1.35rem 1.4rem 4rem;
+}
+
+.howto {
+  border: 1px dashed var(--line-2);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  padding: 0.55rem 0.9rem;
+  margin-bottom: 1.5rem;
+}
+
+.howto summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-2);
+  width: fit-content;
+}
+
+.howto summary:hover {
+  color: var(--text);
+}
+
+.howto-body {
+  max-width: 88ch;
+  color: var(--text-2);
+  font-size: 0.84rem;
+}
+
+.howto-body p {
+  margin: 0.5rem 0;
+}
+
+.howto-body strong {
+  color: var(--text);
+}
+
+.steps {
+  position: relative;
+}
+
+.steps::before {
+  content: "";
+  position: absolute;
+  left: 1.15rem;
+  top: 1.7rem;
+  bottom: 2.2rem;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(var(--line-2), var(--line));
+  opacity: 0.75;
+}
+
+.step {
+  position: relative;
+  padding-left: 3.4rem;
+  margin-bottom: 0.1rem;
+  scroll-margin-top: 4.1rem;
+}
+
+.step-index {
+  position: absolute;
+  left: 0;
+  top: 0.9rem;
+  z-index: 1;
+  width: 2.3rem;
+  height: 2.3rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1.5px solid color-mix(in srgb, var(--repo, var(--accent)) 55%, var(--line));
+  color: var(--repo, var(--accent));
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  box-shadow: 0 0 0 4px var(--bg);
+}
+
+.step-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  transition: border-color 0.16s ease;
+}
+
+.step-card:hover {
+  border-color: var(--line-2);
+}
+
+.step[data-flash="true"] .step-card {
+  animation: flash-card 1.1s ease;
+}
+
+@keyframes flash-card {
+  0% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--repo, var(--accent)) 40%, transparent), var(--shadow);
+  }
+  100% {
+    box-shadow: var(--shadow);
+  }
+}
+
+.step-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "main side"
+    "preview preview";
+  gap: 0.3rem 1rem;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 0.92rem 1.1rem 0.88rem;
+  cursor: pointer;
+}
+
+.step-head:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+  border-radius: 12px;
+}
+
+.head-main {
+  grid-area: main;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+}
+
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.69rem;
+  font-weight: 600;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.kicker .repo-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--repo, var(--text-3));
+}
+
+.kicker .slash {
+  opacity: 0.45;
+}
+
+.head-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.sym {
+  font-family: var(--mono);
+  font-size: 1.02rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.file {
+  font-family: var(--mono);
+  font-size: 0.73rem;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.head-side {
+  grid-area: side;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  align-self: start;
+  color: var(--text-3);
+}
+
+.range {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  white-space: nowrap;
+  color: var(--text-3);
+}
+
+.chev {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 1.6px solid var(--text-3);
+  border-bottom: 1.6px solid var(--text-3);
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform 0.2s ease;
+  flex: 0 0 auto;
+}
+
+.step[data-expanded="true"] .chev {
+  transform: rotate(225deg) translateY(-1px);
+}
+
+.preview {
+  grid-area: preview;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-3);
+  padding-top: 0.15rem;
+}
+
+.step[data-expanded="true"] .preview {
+  display: none;
+}
+
+.step-body {
+  padding: 0 1.1rem 1.05rem;
+}
+
+.note {
+  margin: 0.15rem 0 0.8rem;
+  max-width: 84ch;
+  color: var(--text-2);
+  font-size: 0.89rem;
+}
+
+/* ---------- code ---------- */
+
+.code-shell {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--code-bg);
+}
+
+.code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.8rem;
+  flex-wrap: wrap;
+  padding: 0.38rem 0.5rem 0.38rem 0.8rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 0.71rem;
+}
+
+.code-range {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.code-range b {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.code-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.tool {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-2);
+  border-radius: 6px;
+  padding: 0.18rem 0.45rem;
+  font-size: 0.71rem;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.tool:hover {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.tool:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.tool:disabled:hover {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-2);
+}
+
+.code-block {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.3rem 0 0.4rem;
+  font-family: var(--mono);
+  font-size: 12.8px;
+  line-height: 1.72;
+  tab-size: 4;
+  scrollbar-width: thin;
+}
+
+.code-row {
+  display: flex;
+  align-items: flex-start;
+  min-width: max-content;
+}
+
+.code-row .ln {
+  flex: 0 0 3.3rem;
+  padding-right: 0.85rem;
+  text-align: right;
+  color: var(--text-3);
+  font-size: 0.72rem;
+  line-height: 1.72;
+  opacity: 0.72;
+  user-select: none;
+}
+
+.code-row .src {
+  flex: 0 0 auto;
+  white-space: pre;
+  padding-right: 0.5rem;
+}
+
+.code-row.is-target {
+  background: var(--target);
+}
+
+.code-row.is-target .ln {
+  color: var(--text-2);
+  opacity: 1;
+}
+
+.code-row.is-start .ln {
+  color: var(--repo, var(--accent));
+  font-weight: 700;
+  opacity: 1;
+}
+
+.code-row.is-callsite {
+  background: color-mix(in srgb, var(--callsite) 10%, transparent);
+  box-shadow: inset 3px 0 0 var(--callsite);
+}
+
+.code-row.is-callsite .ln {
+  color: var(--callsite);
+  opacity: 1;
+  font-weight: 700;
+}
+
+.callsite-tag {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 1rem;
+  margin-right: 0.5rem;
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--callsite) 34%, transparent);
+  background: var(--callsite-soft);
+  color: var(--callsite);
+  font-family: var(--sans);
+  font-size: 0.66rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.callsite-tag:hover {
+  border-color: var(--callsite);
+}
+
+.callsite-tag.is-static {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.callsite-tag:focus-visible {
+  outline: 2px solid var(--callsite);
+  outline-offset: 1px;
+}
+
+.more-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  padding: 0.28rem 0.85rem;
+  font-size: 0.7rem;
+  font-family: var(--sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.more-row:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.more-row .more-arrow {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.more-row .hidden-count {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  opacity: 0.7;
+}
+
+.step-links {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+
+.step-links a,
+.step-link {
+  color: var(--text-2);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--line-2);
+  padding: 0;
+  background: none;
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.step-links a:hover,
+.step-link:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.marker-count {
+  margin-left: 0;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--text-3);
+}
+
+.provenance {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.67rem;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* ---------- hops ---------- */
+
+.hop {
+  position: relative;
+  padding: 0.12rem 0 0.72rem 3.4rem;
+  scroll-margin-top: 4.1rem;
+}
+
+.hop-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--hop-color, var(--text-3));
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 0.22rem 0.7rem 0.22rem 0.35rem;
+  box-shadow: var(--shadow-soft);
+  font-size: 0.72rem;
+  color: var(--text-2);
+}
+
+.hop[data-kind="return"] .hop-pill {
+  border-style: dashed;
+  border-left-style: solid;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--surface) 65%, transparent);
+}
+
+.hop-kind {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--hop-color, var(--text-3));
+  background: color-mix(in srgb, var(--hop-color, var(--text-3)) 13%, transparent);
+  border-radius: 999px;
+  padding: 0.1rem 0.38rem;
+}
+
+.hop-label {
+  font-family: var(--mono);
+  font-size: 0.73rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hop-detail {
+  color: var(--text-3);
+  font-size: 0.69rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 46ch;
+}
+
+/* ---------- footer / misc ---------- */
+
+.foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 2.6rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--text-3);
+  font-size: 0.73rem;
+}
+
+.foot code {
+  font-size: 0.71rem;
+  color: var(--text-2);
+}
+
+.foot-keys {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+kbd {
+  display: inline-block;
+  font-size: 0.67rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 0.28rem;
+}
+
+.empty {
+  border: 1px dashed var(--line-2);
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-2);
+  font-size: 0.88rem;
+}
+
+.empty p {
+  margin-bottom: 0.9rem;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.4rem;
+  z-index: 200;
+  transform: translate(-50%, 0.8rem);
+  background: var(--text);
+  color: var(--bg);
+  border-radius: 999px;
+  padding: 0.48rem 0.9rem;
+  font-size: 0.78rem;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  max-width: min(90vw, 40rem);
+  text-align: center;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ---------- syntax tokens ---------- */
+
+.tk-kw {
+  color: #9333a8;
+}
+
+.tk-str {
+  color: #2f7d32;
+}
+
+.tk-num {
+  color: #b45309;
+}
+
+.tk-fn {
+  color: #1d4ed8;
+}
+
+.tk-type {
+  color: #9a6700;
+}
+
+.tk-com {
+  color: #8a8f98;
+  font-style: italic;
+}
+
+[data-theme="dark"] .tk-kw {
+  color: #c792ea;
+}
+
+[data-theme="dark"] .tk-str {
+  color: #a5d6a7;
+}
+
+[data-theme="dark"] .tk-num {
+  color: #f0a64b;
+}
+
+[data-theme="dark"] .tk-fn {
+  color: #82aaff;
+}
+
+[data-theme="dark"] .tk-type {
+  color: #ffcb6b;
+}
+
+[data-theme="dark"] .tk-com {
+  color: #6d788b;
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 820px) {
+  .hero-inner {
+    padding: 1.9rem 1rem 0.95rem;
+  }
+
+  .chain {
+    padding: 1rem 1rem 3rem;
+  }
+
+  .toolbar {
+    align-items: flex-start;
+  }
+
+  .search input {
+    width: 10rem;
+  }
+
+  .steps::before {
+    left: 0.9rem;
+  }
+
+  .step {
+    padding-left: 2.7rem;
+  }
+
+  .step-index {
+    left: 0;
+    width: 1.85rem;
+    height: 1.85rem;
+    font-size: 0.7rem;
+    top: 0.95rem;
+  }
+
+  .hop {
+    padding-left: 2.7rem;
+  }
+
+  .step-body {
+    padding: 0 0.85rem 0.9rem;
+  }
+
+  .step-head {
+    padding: 0.82rem 0.85rem;
+  }
+
+  .hop-detail {
+    display: none;
+  }
+
+  .minimap-scroll {
+    padding: 0.45rem 1rem;
+  }
+
+  .code-block {
+    font-size: 12px;
+  }
+
+  .foot-keys {
+    display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .search input {
+    width: 7rem;
+  }
+
+  .head-line {
+    flex-direction: column;
+    gap: 0.1rem;
+    align-items: flex-start;
+  }
+
+  .range {
+    display: none;
+  }
+
+  .callsite-tag {
+    margin-left: 0.6rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  .minimap,
+  .toolbar,
+  .howto,
+  .step-links,
+  .code-tools,
+  .more-row,
+  .toast,
+  .foot-keys {
+    display: none !important;
+  }
+
+  .step {
+    break-inside: avoid;
+    padding-left: 2.4rem;
+  }
+
+  .step-index {
+    background: #fff;
+    box-shadow: none;
+  }
+
+  .step-card,
+  .code-shell {
+    box-shadow: none;
+  }
+
+  .step-body {
+    display: block !important;
+  }
+}
+
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#chain">Skip to the chain</a>
+
+    <header class="hero">
+      <div class="hero-inner">
+        <div class="eyebrow"><span class="pulse" aria-hidden="true"></span>Generated call chain · single-file HTML</div>
+        <h1 id="page-title">Call chain</h1>
+        <p class="subtitle" id="page-subtitle"></p>
+        <div class="meta-row" id="page-meta"></div>
+
+        <div class="toolbar">
+          <div class="filters" id="repo-filters" role="group" aria-label="Filter by repository"></div>
+          <div class="tools">
+            <label class="search">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"></circle>
+                <path d="m20 20-3.4-3.4"></path>
+              </svg>
+              <span class="sr-only">Filter steps</span>
+              <input id="search" type="search" placeholder="Filter steps, files, notes…" autocomplete="off" spellcheck="false" />
+              <kbd>/</kbd>
+            </label>
+            <button class="btn" id="btn-expand-all" type="button">Expand all</button>
+            <button class="btn" id="btn-collapse-all" type="button">Collapse all</button>
+            <button class="btn btn-icon" id="btn-theme" type="button" title="Toggle theme" aria-label="Toggle theme">◐</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <nav class="minimap" aria-label="Chain map">
+      <div class="minimap-scroll" id="minimap"></div>
+    </nav>
+
+    <main class="chain" id="chain">
+      <details class="howto">
+        <summary>How to read this</summary>
+        <div class="howto-body">
+          <p>
+            Each step is a function in one repository. The pill between steps is the hop:
+            <strong>HTTP</strong>, <strong>gRPC</strong>, an <strong>event</strong>, or a
+            <strong>return</strong>. Click a step to open its code.
+          </p>
+          <p>
+            Inside a code block, use <strong>Show more lines</strong> above or below the function to
+            grow the context, <strong>Fit function</strong> to come back, and <strong>Whole file</strong>
+            to see everything embedded. The orange marker is the line where the next hop starts —
+            click it to jump.
+          </p>
+          <p>
+            Snippets are embedded when the page is generated, so this file works offline and can be
+            attached to a ticket or a review. Hops are <em>asserted</em> by the chain author unless
+            an indexer verified them; the blob hash in each step is the source file's checksum at
+            build time. Keyboard: <kbd>j</kbd>/<kbd>k</kbd> move between steps, <kbd>e</kbd> expands,
+            <kbd>/</kbd> searches.
+          </p>
+        </div>
+      </details>
+
+      <div id="steps" class="steps"></div>
+
+      <div class="empty" id="empty" hidden>
+        <p>No steps match this filter.</p>
+        <button class="btn" id="btn-reset-filter" type="button">Clear filters</button>
+      </div>
+
+      <footer class="foot">
+        <div>
+          <span id="foot-generated"></span> · generated by <code>build_callchain.py</code> from
+          <code id="foot-spec"></code>. Snippets are embedded at generation time; no network required.
+        </div>
+        <div class="foot-keys"><kbd>j</kbd><kbd>k</kbd> navigate · <kbd>e</kbd> expand · <kbd>/</kbd> search</div>
+      </footer>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script type="application/json" id="chain-data">{"title":"Placing an order, end to end","subtitle":"One checkout request fans out across five repositories. Each hop below is a real function: open a step to read the code, then grow the context around it in place.","context":4,"generatedAt":"2026-11-09T22:06:43+08:00","specFile":"chain.spec.json","repos":[{"id":"web-client","name":"web-client","root":"demo/repos/web-client","rootAbs":"D:\\DSH_Workspace\\research\\callchain\\demo\\repos\\web-client","color":"#0ea5e9","ref":null,"stepCount":1,"languages":["TypeScript"]},{"id":"api-gateway","name":"api-gateway","root":"demo/repos/api-gateway","rootAbs":"D:\\DSH_Workspace\\research\\callchain\\demo\\repos\\api-gateway","color":"#3b82f6","ref":null,"stepCount":1,"languages":["TypeScript"]},{"id":"order-service","name":"order-service","root":"demo/repos/order-service","rootAbs":"D:\\DSH_Workspace\\research\\callchain\\demo\\repos\\order-service","color":"#8b5cf6","ref":null,"stepCount":2,"languages":["Python"]},{"id":"inventory-service","name":"inventory-service","root":"demo/repos/inventory-service","rootAbs":"D:\\DSH_Workspace\\research\\callchain\\demo\\repos\\inventory-service","color":"#10b981","ref":null,"stepCount":1,"languages":["Go"]},{"id":"notifier-service","name":"notifier-service","root":"demo/repos/notifier-service","rootAbs":"D:\\DSH_Workspace\\research\\callchain\\demo\\repos\\notifier-service","color":"#f59e0b","ref":null,"stepCount":1,"languages":["Python"]}],"steps":[{"id":"submit-order","n":1,"repo":"web-client","repoName":"web-client","repoColor":"#0ea5e9","repoRef":null,"lang":"ts","langName":"TypeScript","file":"src/checkout/submitOrder.ts","absPath":"D:\\DSH_Workspace\\research\\callchain\\demo\\repos\\web-client\\src\\checkout\\submitOrder.ts","contentHash":"fab14e5ac09761f408a222ef6341bf7ddd8a3a59d86b352e884ad93eff071e05","symbol":"submitOrder","signature":"export async function submitOrder(cart: Cart): Promise<Order> {","startLine":11,"endLine":31,"context":4,"note":"The checkout button calls submitOrder(). It flattens the cart into the payload the gateway expects and records analytics around the request.","callsites":[{"line":27,"label":"POST /orders","to":"gateway-handler"}],"edge":{"type":"http","kind":"HTTP","label":"POST /orders","detail":"web-client → api-gateway · JSON over HTTPS","verified":false},"vscodeUri":"vscode://file/D:/DSH_Workspace/research/callchain/demo/repos/web-client/src/checkout/submitOrder.ts:11","snippet":{"startLine":1,"endLine":31,"wholeFile":true,"totalLines":31,"lines":[[1,"import { http } from \"../lib/http\";"],[2,"import { track } from \"../lib/analytics\";"],[3,"import type { Cart, Order } from \"../types\";"],[4,""],[5,"const CHECKOUT_ENDPOINT = \"/orders\";"],[6,""],[7,"/**"],[8," * Converts the current cart into an order and hands it to the gateway."],[9," * The checkout button stays disabled until this promise settles."],[10," */"],[11,"export async function submitOrder(cart: Cart): Promise<Order> {"],[12,"  if (cart.items.length === 0) {"],[13,"    throw new Error(\"cannot submit an empty cart\");"],[14,"  }"],[15,""],[16,"  const payload = {"],[17,"    items: cart.items.map((item) => ({"],[18,"      sku: item.sku,"],[19,"      quantity: item.quantity,"],[20,"    })),"],[21,"    shippingAddress: cart.shippingAddress,"],[22,"    paymentToken: cart.paymentToken,"],[23,"  };"],[24,""],[25,"  track(\"checkout_submitted\", { itemCount: payload.items.length });"],[26,""],[27,"  const order = await http.post<Order>(CHECKOUT_ENDPOINT, payload);"],[28,""],[29,"  track(\"checkout_accepted\", { orderId: order.id });"],[30,"  return order;"],[31,"}"]]}},{"id":"gateway-handler","n":2,"repo":"api-gateway","repoName":"api-gateway","repoColor":"#3b82f6","repoRef":null,"lang":"ts","langName":"TypeScript","file":"src/routes/orders.ts","absPath":"D:\\DSH_Workspace\\research\\callchain\\demo\\repos\\api-gateway\\src\\routes\\orders.ts","contentHash":"fbb82718e675b1bbccad450b9b7629f889046144928cd5487b4562a3d3078b4e","symbol":"createOrderHandler","signature":"async function createOrderHandler(req: Request, res: Response) {","startLine":13,"endLine":23,"context":4,"note":"The gateway validates and rate-limits the public request, then forwards it to the internal order service. The browser never reaches order-service directly.","callsites":[{"line":17,"label":"POST /internal/orders","to":"create-order"}],"edge":{"type":"http","kind":"HTTP","label":"POST /internal/orders","detail":"api-gateway → order-service · internal network","verified":false},"vscodeUri":"vscode://file/D:/DSH_Workspace/research/callchain/demo/repos/api-gateway/src/routes/orders.ts:13","snippet":{"startLine":1,"endLine":29,"wholeFile":true,"totalLines":29,"lines":[[1,"import { Router, type Request, type Response } from \"express\";"],[2,""],[3,"import { orderClient } from \"../clients/orderClient\";"],[4,"import { rateLimit } from \"../middleware/rateLimit\";"],[5,"import { validateOrderPayload } from \"../validation/orderSchema\";"],[6,""],[7,"export const ordersRouter = Router();"],[8,""],[9,"/**"],[10," * Edge handler: validates the public payload, then forwards it to the"],[11," * internal order service. The browser never reaches order-service directly."],[12," */"],[13,"async function createOrderHandler(req: Request, res: Response) {"],[14,"  const payload = validateOrderPayload(req.body);"],[15,""],[16,"  try {"],[17,"    const order = await orderClient.createOrder(payload);"],[18,"    res.status(201).json(order);"],[19,"  } catch (error) {"],[20,"    req.log.error({ err: error }, \"order creation failed\");"],[21,"    res.status(502).json({ error: \"order_service_unavailable\" });"],[22,"  }"],[23,"}"],[24,""],[25,"ordersRouter.post("],[26,"  \"/orders\","],[27,"  rateLimit({ limit: 20, windowMs: 60_000 }),"],[28,"  createOrderHandler,"],[29,");"]]}},{"id":"create-order","n":3,"repo":"order-service","repoName":"order-service","repoColor":"#8b5cf6","repoRef":null,"lang":"python","langName":"Python","file":"app/api/orders.py","absPath":"D:\\DSH_Workspace\\research\\callchain\\demo\\repos\\order-service\\app\\api\\orders.py","contentHash":"9440a5c752d4517da28b018b83f0d6a97fc8dccb6707fcad7e599d37b6c73ad8","symbol":"create_order","signature":"async def create_order( payload: OrderCreate, inventory: InventoryClient = Depends(), repository: OrderRepository = Depends(), events: EventBus = Depends(), ) -> Order:","startLine":12,"endLine":26,"context":4,"note":"The FastAPI handler reserves stock over gRPC, persists the order, then publishes an event. Note the second call marker below: it is the async branch of this chain.","callsites":[{"line":19,"label":"gRPC Reserve","to":"reserve-stock"},{"line":25,"label":"publish order.created","to":"publish-event"}],"edge":{"type":"grpc","kind":"gRPC","label":"InventoryService.Reserve","detail":"order-service → inventory-service · unary call, 2s deadline","verified":false},"vscodeUri":"vscode://file/D:/DSH_Workspace/research/callchain/demo/repos/order-service/app/api/orders.py:12","snippet":{"startLine":1,"endLine":26,"wholeFile":true,"totalLines":26,"lines":[[1,"from fastapi import APIRouter, Depends"],[2,""],[3,"from app.clients.inventory import InventoryClient"],[4,"from app.events import EventBus"],[5,"from app.repositories.orders import OrderRepository"],[6,"from app.schemas import Order, OrderCreate"],[7,""],[8,"router = APIRouter(prefix=\"/internal/orders\")"],[9,""],[10,""],[11,"@router.post(\"\", response_model=Order)"],[12,"async def create_order("],[13,"    payload: OrderCreate,"],[14,"    inventory: InventoryClient = Depends(),"],[15,"    repository: OrderRepository = Depends(),"],[16,"    events: EventBus = Depends(),"],[17,") -> Order:"],[18,"    \"\"\"Reserve stock, persist the order, then announce it.\"\"\""],[19,"    reservation = await inventory.reserve("],[20,"        order_id=payload.order_id,"],[21,"        sku_quantities=payload.sku_quantities,"],[22,"    )"],[23,""],[24,"    order = await repository.save(payload, reservation)"],[25,"    await events.publish(\"order.created\", order)"],[26,"    return order"]]}},{"id":"reserve-stock","n":4,"repo":"inventory-service","repoName":"inventory-service","repoColor":"#10b981","repoRef":null,"lang":"go","langName":"Go","file":"internal/reservation/service.go","absPath":"D:\\DSH_Workspace\\research\\callchain\\demo\\repos\\inventory-service\\internal\\reservation\\service.go","contentHash":"88d1875521ccdcf596d70e2e8e7f7055296ad1c370481055be10ced40a7198fd","symbol":"Service.Reserve","signature":"func (s *Service) Reserve(ctx context.Context, items []store.Item) (*store.Reservation, error) {","startLine":18,"endLine":45,"context":4,"note":"The inventory service performs the reservation in one transaction: lock the SKUs, check availability, then insert the reservation row.","callsites":[{"line":25,"label":"single DB transaction","to":null}],"edge":{"type":"return","kind":"RETURN","label":"reservation confirmed","detail":"Reserve returns to create_order; the handler continues and publishes order.created","verified":false},"vscodeUri":"vscode://file/D:/DSH_Workspace/research/callchain/demo/repos/inventory-service/internal/reservation/service.go:18","snippet":{"startLine":1,"endLine":45,"wholeFile":true,"totalLines":45,"lines":[[1,"package reservation"],[2,""],[3,"import ("],[4,"\t\"context\""],[5,"\t\"fmt\""],[6,"\t\"time\""],[7,""],[8,"\t\"github.com/example/inventory/internal/store\""],[9,")"],[10,""],[11,"// Service owns stock reservation: it checks availability and writes a"],[12,"// reservation row inside one database transaction."],[13,"type Service struct {"],[14,"\tstore *store.Store"],[15,"\tttl   time.Duration"],[16,"}"],[17,""],[18,"func (s *Service) Reserve(ctx context.Context, items []store.Item) (*store.Reservation, error) {"],[19,"\tif len(items) == 0 {"],[20,"\t\treturn nil, fmt.Errorf(\"reserve: no items\")"],[21,"\t}"],[22,""],[23,"\texpiresAt := time.Now().Add(s.ttl)"],[24,""],[25,"\treservation, err := s.store.WithTx(ctx, func(tx *store.Tx) (*store.Reservation, error) {"],[26,"\t\tif err := tx.LockStock(ctx, items); err != nil {"],[27,"\t\t\treturn nil, fmt.Errorf(\"lock stock: %w\", err)"],[28,"\t\t}"],[29,""],[30,"\t\tavailable, err := tx.Available(ctx, items)"],[31,"\t\tif err != nil {"],[32,"\t\t\treturn nil, fmt.Errorf(\"check availability: %w\", err)"],[33,"\t\t}"],[34,"\t\tif !available {"],[35,"\t\t\treturn nil, store.ErrOutOfStock"],[36,"\t\t}"],[37,""],[38,"\t\treturn tx.InsertReservation(ctx, items, expiresAt)"],[39,"\t})"],[40,""],[41,"\tif err != nil {"],[42,"\t\treturn nil, fmt.Errorf(\"reserve: %w\", err)"],[43,"\t}"],[44,"\treturn reservation, nil"],[45,"}"]]}},{"id":"publish-event","n":5,"repo":"order-service","repoName":"order-service","repoColor":"#8b5cf6","repoRef":null,"lang":"python","langName":"Python","file":"app/events.py","absPath":"D:\\DSH_Workspace\\research\\callchain\\demo\\repos\\order-service\\app\\events.py","contentHash":"69febecc878a93e8711e3fa2cd265bbd5912cf6c96a10e0b53eacca2f23d52d6","symbol":"EventBus.publish","signature":"async def publish(self, topic: str, order: Order) -> None:","startLine":14,"endLine":23,"context":4,"note":"create_order does not wait for downstream consumers. publish() writes order.created to Kafka and returns.","callsites":[{"line":22,"label":"order.created","to":"notify-customer"}],"edge":{"type":"event","kind":"EVENT","label":"order.created","detail":"Kafka topic · at-least-once delivery → notifier-service","verified":false},"vscodeUri":"vscode://file/D:/DSH_Workspace/research/callchain/demo/repos/order-service/app/events.py:14","snippet":{"startLine":1,"endLine":23,"wholeFile":true,"totalLines":23,"lines":[[1,"import json"],[2,"from datetime import datetime, timezone"],[3,""],[4,"from app.schemas import Order"],[5,""],[6,""],[7,"class EventBus:"],[8,"    \"\"\"Thin wrapper around the Kafka producer with domain-event helpers.\"\"\""],[9,""],[10,"    def __init__(self, producer, metrics):"],[11,"        self._producer = producer"],[12,"        self._metrics = metrics"],[13,""],[14,"    async def publish(self, topic: str, order: Order) -> None:"],[15,"        event = {"],[16,"            \"type\": topic,"],[17,"            \"orderId\": order.id,"],[18,"            \"customerId\": order.customer_id,"],[19,"            \"total\": str(order.total),"],[20,"            \"occurredAt\": datetime.now(timezone.utc).isoformat(),"],[21,"        }"],[22,"        await self._producer.send(topic, key=order.id, value=json.dumps(event))"],[23,"        self._metrics.increment(\"events.published\", tags={\"topic\": topic})"]]}},{"id":"notify-customer","n":6,"repo":"notifier-service","repoName":"notifier-service","repoColor":"#f59e0b","repoRef":null,"lang":"python","langName":"Python","file":"app/consumers/orders.py","absPath":"D:\\DSH_Workspace\\research\\callchain\\demo\\repos\\notifier-service\\app\\consumers\\orders.py","contentHash":"89b4468c4695a7a3c1b91d23d1363150b4959133a1e6a722bb4c9fe78bcc0dfa","symbol":"handle_order_created","signature":"async def handle_order_created(message) -> None:","startLine":10,"endLine":24,"context":4,"note":"notifier-service reacts to the event, loads the customer, and sends the confirmation email. This is where the synchronous request chain becomes asynchronous work.","callsites":[{"line":23,"label":"confirmation email","to":null}],"edge":null,"vscodeUri":"vscode://file/D:/DSH_Workspace/research/callchain/demo/repos/notifier-service/app/consumers/orders.py:10","snippet":{"startLine":1,"endLine":24,"wholeFile":true,"totalLines":24,"lines":[[1,"import logging"],[2,""],[3,"from app.clients.customers import CustomerClient"],[4,"from app.mailer import Mailer"],[5,"from app.schemas import OrderCreatedEvent"],[6,""],[7,"logger = logging.getLogger(__name__)"],[8,""],[9,""],[10,"async def handle_order_created(message) -> None:"],[11,"    \"\"\"Consumer entry point for the order.created topic.\"\"\""],[12,"    event = OrderCreatedEvent.parse(message.value)"],[13,"    customer = await CustomerClient.get(event.customer_id)"],[14,""],[15,"    if customer is None:"],[16,"        logger.warning("],[17,"            \"unknown customer %s for order %s\","],[18,"            event.customer_id,"],[19,"            event.order_id,"],[20,"        )"],[21,"        return"],[22,""],[23,"    await Mailer.send_order_confirmation(customer, event)"],[24,"    logger.info(\"confirmation sent for order %s\", event.order_id)"]]}}],"stats":{"steps":6,"repos":5,"files":6,"languages":["TypeScript","Python","Go"]}}</script>
+    <script>
+      /* ============================================================
+   Call chain explorer — viewer logic
+   Input: JSON in #chain-data (embedded at build time).
+   No network, no dependencies.
+   ============================================================ */
+
+(function () {
+  "use strict";
+
+  var DATA;
+  try {
+    DATA = JSON.parse(document.getElementById("chain-data").textContent);
+  } catch (err) {
+    fatal("Could not parse the embedded chain data: " + err);
+    return;
+  }
+
+  var KIND_COLORS = {
+    http: "#3b82f6",
+    grpc: "#8b5cf6",
+    event: "#f59e0b",
+    return: "#94a3b8",
+    internal: "#94a3b8"
+  };
+
+  var STORAGE_THEME = "callchain-theme";
+
+  var state = {
+    expanded: new Set(),
+    windows: new Map(),
+    repos: new Set(DATA.repos.map(function (r) { return r.id; })),
+    query: ""
+  };
+
+  var refs = Object.create(null);
+  var toastTimer = null;
+
+  /* ---------- small helpers ---------- */
+
+  function esc(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function byId(id) {
+    for (var i = 0; i < DATA.steps.length; i++) {
+      if (DATA.steps[i].id === id) return DATA.steps[i];
+    }
+    return null;
+  }
+
+  function setText(selector, text) {
+    var node = document.querySelector(selector);
+    if (node) node.textContent = text;
+  }
+
+  function formatDate(iso) {
+    try {
+      return new Date(iso).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric"
+      });
+    } catch (err) {
+      return "";
+    }
+  }
+
+  function fatal(message) {
+    var panel = document.createElement("div");
+    panel.style.cssText =
+      "margin:2rem auto;max-width:60rem;padding:1rem 1.2rem;border:1px solid #d33;" +
+      "border-radius:12px;font-family:ui-monospace,monospace;font-size:13px;white-space:pre-wrap";
+    panel.textContent = message;
+    document.body.appendChild(panel);
+  }
+
+  /* ---------- windows / context ---------- */
+
+  function defaultWindow(step) {
+    var c = Number(step.context);
+    if (!isFinite(c)) c = Number(DATA.context) || 4;
+    return {
+      start: Math.max(step.snippet.startLine, step.startLine - c),
+      end: Math.min(step.snippet.endLine, step.endLine + c)
+    };
+  }
+
+  function getWindow(step) {
+    if (!state.windows.has(step.id)) {
+      state.windows.set(step.id, defaultWindow(step));
+    }
+    return state.windows.get(step.id);
+  }
+
+  /* ---------- header ---------- */
+
+  function renderMeta() {
+    var stats = DATA.stats;
+    var parts = [];
+    parts.push('<span class="stat"><b>' + stats.steps + "</b> hops</span>");
+    parts.push('<span class="stat"><b>' + stats.repos + "</b> repositories</span>");
+    parts.push('<span class="stat">' + esc(stats.languages.join(" · ")) + "</span>");
+    if (DATA.generatedAt) {
+      parts.push('<span class="stat">generated ' + esc(formatDate(DATA.generatedAt)) + "</span>");
+    }
+    document.getElementById("page-meta").innerHTML = parts.join("");
+  }
+
+  function renderFilters() {
+    var wrap = document.getElementById("repo-filters");
+    var html =
+      '<button type="button" class="filter" data-repo="all">' +
+      '<span class="filter-name">All</span>' +
+      '<span class="count">' + DATA.steps.length + "</span></button>";
+
+    DATA.repos.forEach(function (repo) {
+      html +=
+        '<button type="button" class="filter" data-repo="' + esc(repo.id) + '"' +
+        ' style="--repo:' + esc(repo.color) + '">' +
+        '<span class="dot"></span>' +
+        '<span class="filter-name">' + esc(repo.name) + "</span>" +
+        '<span class="count">' + repo.stepCount + "</span></button>";
+    });
+
+    wrap.innerHTML = html;
+  }
+
+  function syncFilters() {
+    var all = state.repos.size === DATA.repos.length;
+    var buttons = document.querySelectorAll("#repo-filters .filter");
+    for (var i = 0; i < buttons.length; i++) {
+      var id = buttons[i].dataset.repo;
+      var pressed = id === "all" ? all : state.repos.has(id);
+      buttons[i].setAttribute("aria-pressed", String(pressed));
+    }
+  }
+
+  /* ---------- minimap ---------- */
+
+  function renderMinimap() {
+    var html = "";
+    DATA.steps.forEach(function (step, index) {
+      html +=
+        '<button type="button" class="map-step" data-target="' + esc(step.id) + '"' +
+        ' style="--repo:' + esc(step.repoColor) + '">' +
+        '<span class="dot"></span>' +
+        '<span class="num">' + step.n + "</span>" +
+        '<span class="map-symbol">' + esc(step.symbol) + "</span></button>";
+      if (index < DATA.steps.length - 1) {
+        html += '<span class="map-arrow" aria-hidden="true">›</span>';
+      }
+    });
+    document.getElementById("minimap").innerHTML = html;
+  }
+
+  /* ---------- step markup ---------- */
+
+  function headerHtml(step) {
+    return (
+      '<span class="head-main">' +
+        '<span class="kicker">' +
+          '<span class="repo-dot"></span>' + esc(step.repoName) +
+          '<span class="slash">/</span>' + esc(step.langName) +
+        "</span>" +
+        '<span class="head-line">' +
+          '<code class="sym">' + esc(step.symbol) + "</code>" +
+          '<span class="file">' + esc(step.file) + "</span>" +
+        "</span>" +
+      "</span>" +
+      '<span class="head-side">' +
+        '<span class="range">L' + step.startLine + "–" + step.endLine + "</span>" +
+        '<span class="chev" aria-hidden="true"></span>' +
+      "</span>" +
+      '<span class="preview">' + esc(step.signature) + "</span>"
+    );
+  }
+
+  function bodyHtml(step) {
+    var wholeDisabled = step.snippet.wholeFile
+      ? ""
+      : ' disabled title="Only a window of this file was embedded at build time"';
+
+    return (
+      '<p class="note">' + esc(step.note) + "</p>" +
+      '<div class="code-shell">' +
+        '<div class="code-head">' +
+          '<span class="code-range" data-range></span>' +
+          '<span class="code-tools">' +
+            '<button type="button" class="tool" data-action="fit">Fit function</button>' +
+            '<button type="button" class="tool" data-action="whole"' + wholeDisabled + ">Whole file</button>" +
+            '<button type="button" class="tool" data-action="copy">Copy</button>' +
+          "</span>" +
+        "</div>" +
+        '<div class="code-block" data-code></div>' +
+      "</div>" +
+      '<div class="step-links">' +
+        '<a href="' + esc(step.vscodeUri) + '" title="Open ' + esc(step.absPath) + ' in VS Code">Open in VS Code</a>' +
+        '<button type="button" class="step-link" data-action="link">Copy link</button>' +
+        '<span class="provenance" title="sha256: ' + esc(step.contentHash) +
+          (step.repoRef ? " · pinned at " + esc(step.repoRef) : "") +
+          '">blob ' + esc(String(step.contentHash).slice(0, 7)) + "</span>" +
+        '<span class="marker-count" data-markers></span>' +
+      "</div>"
+    );
+  }
+
+  function hopHtml(step) {
+    var edge = step.edge;
+    if (!edge) return "";
+    var credibility = edge.verified
+      ? "verified by an indexer"
+      : "asserted by the chain author";
+    return (
+      '<div class="hop" data-kind="' + esc(edge.type) + '" data-for="' + esc(step.id) + '"' +
+      ' style="--hop-color:' + esc(KIND_COLORS[edge.type] || "#94a3b8") + '">' +
+        '<div class="hop-pill" title="' + esc((edge.detail || "") + " · " + credibility) + '">' +
+          '<span class="hop-kind">' + esc(edge.kind || String(edge.type).toUpperCase()) + "</span>" +
+          '<span class="hop-label">' + esc(edge.label) + "</span>" +
+          '<span class="hop-detail">' + esc(edge.detail || "") + "</span>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function buildSteps() {
+    var wrap = document.getElementById("steps");
+    var html = "";
+
+    DATA.steps.forEach(function (step) {
+      html +=
+        '<article class="step" id="step-' + esc(step.id) + '" data-step="' + esc(step.id) + '"' +
+        ' data-expanded="false" style="--repo:' + esc(step.repoColor) + '">' +
+          '<div class="step-index" aria-hidden="true">' + step.n + "</div>" +
+          '<div class="step-card">' +
+            '<button type="button" class="step-head" aria-expanded="false"' +
+            ' aria-controls="body-' + esc(step.id) + '">' + headerHtml(step) + "</button>" +
+            '<div class="step-body" id="body-' + esc(step.id) + '" hidden>' + bodyHtml(step) + "</div>" +
+          "</div>" +
+        "</article>" +
+        hopHtml(step);
+    });
+
+    wrap.innerHTML = html;
+
+    DATA.steps.forEach(function (step) {
+      var article = document.getElementById("step-" + step.id);
+      refs[step.id] = {
+        article: article,
+        head: article.querySelector(".step-head"),
+        body: article.querySelector(".step-body"),
+        code: article.querySelector("[data-code]"),
+        range: article.querySelector("[data-range]"),
+        markers: article.querySelector("[data-markers]"),
+        hop: document.querySelector('.hop[data-for="' + step.id + '"]')
+      };
+    });
+  }
+
+  /* ---------- syntax highlighting ---------- */
+
+  function wordSet(words) {
+    var set = Object.create(null);
+    words.split(" ").forEach(function (word) { set[word] = true; });
+    return set;
+  }
+
+  var KEYWORDS = {
+    ts: wordSet(
+      "const let var function async await return if else for while do switch case break " +
+      "continue import from export default class extends new throw try catch finally typeof " +
+      "instanceof in of this super yield static public private protected readonly interface " +
+      "type enum namespace declare abstract implements void string number boolean any unknown " +
+      "never object as is keyof infer asserts satisfies"
+    ),
+    python: wordSet(
+      "def class async await return if elif else for while import from as with try except " +
+      "finally raise yield lambda pass break continue and or not in is None True False match " +
+      "case global nonlocal assert del self cls"
+    ),
+    go: wordSet(
+      "func package import return if else for range switch case default type struct interface " +
+      "map chan go defer select break continue var const nil true false string int int64 " +
+      "float64 bool error byte rune make new len cap append panic recover"
+    ),
+    brace: wordSet(
+      "public private protected class interface extends implements new return if else for " +
+      "while switch case break continue import package static final void int long double " +
+      "float boolean true false null this super try catch finally throw throws"
+    )
+  };
+
+  function span(cls, text) {
+    return '<span class="tk-' + cls + '">' + esc(text) + "</span>";
+  }
+
+  function highlightLines(lines, lang) {
+    var key = KEYWORDS[lang] ? lang : "brace";
+    var st = { mode: "normal", delim: "" };
+    return lines.map(function (line) {
+      return highlightLine(line, key, st);
+    });
+  }
+
+  function scanQuoted(line, start, quote) {
+    var i = start + 1;
+    var escaped = false;
+    while (i < line.length) {
+      var ch = line[i];
+      if (escaped) { escaped = false; i += 1; continue; }
+      if (ch === "\\") { escaped = true; i += 1; continue; }
+      if (ch === quote) return { end: i + 1, open: false };
+      i += 1;
+    }
+    return { end: line.length, open: true };
+  }
+
+  function highlightLine(line, lang, st) {
+    var out = "";
+    var i = 0;
+    var n = line.length;
+    var py = lang === "python";
+
+    while (i < n) {
+      if (st.mode === "block") {
+        var blockEnd = line.indexOf("*/", i);
+        if (blockEnd === -1) {
+          out += span("com", line.slice(i));
+          return out;
+        }
+        out += span("com", line.slice(i, blockEnd + 2));
+        i = blockEnd + 2;
+        st.mode = "normal";
+        continue;
+      }
+
+      if (st.mode === "string") {
+        var stringEnd = line.indexOf(st.delim, i);
+        if (stringEnd === -1) {
+          out += span("str", line.slice(i));
+          return out;
+        }
+        out += span("str", line.slice(i, stringEnd + st.delim.length));
+        i = stringEnd + st.delim.length;
+        st.mode = "normal";
+        st.delim = "";
+        continue;
+      }
+
+      var ch = line[i];
+
+      if (!py && ch === "/" && line[i + 1] === "/") {
+        out += span("com", line.slice(i));
+        break;
+      }
+      if (py && ch === "#") {
+        out += span("com", line.slice(i));
+        break;
+      }
+      if (ch === "/" && line[i + 1] === "*") {
+        var close = line.indexOf("*/", i + 2);
+        if (close === -1) {
+          out += span("com", line.slice(i));
+          st.mode = "block";
+          break;
+        }
+        out += span("com", line.slice(i, close + 2));
+        i = close + 2;
+        continue;
+      }
+
+      if (py && line.slice(i, i + 3) === '"""') {
+        var triple = '"""';
+        var tripleEnd = line.indexOf(triple, i + 3);
+        if (tripleEnd === -1) {
+          out += span("str", line.slice(i));
+          st.mode = "string";
+          st.delim = triple;
+          break;
+        }
+        out += span("str", line.slice(i, tripleEnd + 3));
+        i = tripleEnd + 3;
+        continue;
+      }
+      if (py && line.slice(i, i + 3) === "'''") {
+        var triple2 = "'''";
+        var tripleEnd2 = line.indexOf(triple2, i + 3);
+        if (tripleEnd2 === -1) {
+          out += span("str", line.slice(i));
+          st.mode = "string";
+          st.delim = triple2;
+          break;
+        }
+        out += span("str", line.slice(i, tripleEnd2 + 3));
+        i = tripleEnd2 + 3;
+        continue;
+      }
+
+      if (ch === '"' || ch === "'") {
+        var quoted = scanQuoted(line, i, ch);
+        out += span("str", line.slice(i, quoted.end));
+        i = quoted.end;
+        continue;
+      }
+
+      if (ch === "`" && (lang === "ts" || lang === "brace")) {
+        var tickEnd = line.indexOf("`", i + 1);
+        if (tickEnd === -1) {
+          out += span("str", line.slice(i));
+          st.mode = "string";
+          st.delim = "`";
+          break;
+        }
+        out += span("str", line.slice(i, tickEnd + 1));
+        i = tickEnd + 1;
+        continue;
+      }
+
+      if (/[0-9]/.test(ch)) {
+        var numberMatch = /^[0-9][0-9A-Za-z_.]*/.exec(line.slice(i));
+        out += span("num", numberMatch[0]);
+        i += numberMatch[0].length;
+        continue;
+      }
+
+      if (/[A-Za-z_$]/.test(ch)) {
+        var wordMatch = /^[A-Za-z_$][A-Za-z0-9_$]*/.exec(line.slice(i));
+        var word = wordMatch[0];
+        var rest = line.slice(i + word.length);
+        var nextChar = rest.replace(/^\s+/, "").charAt(0);
+        var cls = null;
+        if (KEYWORDS[lang][word]) cls = "kw";
+        else if (nextChar === "(") cls = "fn";
+        else if (/^[A-Z]/.test(word)) cls = "type";
+        out += cls ? span(cls, word) : esc(word);
+        i += word.length;
+        continue;
+      }
+
+      out += esc(ch);
+      i += 1;
+    }
+
+    return out;
+  }
+
+  /* ---------- code rendering ---------- */
+
+  function moreRow(direction, hidden) {
+    var amount = Math.min(10, hidden);
+    return (
+      '<button type="button" class="more-row" data-more="' + direction + '">' +
+        '<span class="more-arrow">' + (direction === "up" ? "↑" : "↓") + "</span>" +
+        "Show " + amount + " more line" + (amount === 1 ? "" : "s") + " " +
+        (direction === "up" ? "above" : "below") +
+        '<span class="hidden-count">' + hidden + " hidden</span>" +
+      "</button>"
+    );
+  }
+
+  function callsiteFor(step, lineNo) {
+    for (var i = 0; i < step.callsites.length; i++) {
+      if (step.callsites[i].line === lineNo) return step.callsites[i];
+    }
+    return null;
+  }
+
+  function renderCode(step) {
+    var r = refs[step.id];
+    var sn = step.snippet;
+    var win = getWindow(step);
+
+    // Highlight from the snippet start so multi-line strings and comments
+    // keep their state even when the visible window starts mid-block.
+    var prefix = sn.lines.filter(function (pair) {
+      return pair[0] >= sn.startLine && pair[0] <= win.end;
+    });
+    var highlighted = highlightLines(
+      prefix.map(function (pair) { return pair[1]; }),
+      step.lang
+    );
+    var byLine = Object.create(null);
+    prefix.forEach(function (pair, index) { byLine[pair[0]] = highlighted[index]; });
+
+    var visible = sn.lines.filter(function (pair) {
+      return pair[0] >= win.start && pair[0] <= win.end;
+    });
+
+    var parts = [];
+    var hiddenAbove = win.start - sn.startLine;
+    var hiddenBelow = sn.endLine - win.end;
+
+    if (hiddenAbove > 0) parts.push(moreRow("up", hiddenAbove));
+
+    visible.forEach(function (pair) {
+      var lineNo = pair[0];
+      var classes = ["code-row"];
+      if (lineNo >= step.startLine && lineNo <= step.endLine) classes.push("is-target");
+      if (lineNo === step.startLine) classes.push("is-start");
+
+      var callsite = callsiteFor(step, lineNo);
+      if (callsite) classes.push("is-callsite");
+
+      var marker = "";
+      if (callsite) {
+        if (callsite.to) {
+          marker =
+            '<button type="button" class="callsite-tag" data-goto="' + esc(callsite.to) +
+            '" title="Jump to ' + esc(callsite.to) + '">↳ ' + esc(callsite.label) + "</button>";
+        } else {
+          marker =
+            '<span class="callsite-tag is-static" title="' + esc(callsite.label) +
+            '">↳ ' + esc(callsite.label) + "</span>";
+        }
+      }
+
+      parts.push(
+        '<div class="' + classes.join(" ") + '" data-line="' + lineNo + '">' +
+          '<span class="ln">' + lineNo + "</span>" +
+          '<span class="src">' + (byLine[lineNo] || " ") + "</span>" +
+          marker +
+        "</div>"
+      );
+    });
+
+    if (hiddenBelow > 0) parts.push(moreRow("down", hiddenBelow));
+
+    r.code.innerHTML = parts.join("");
+  }
+
+  function updateRange(step) {
+    var r = refs[step.id];
+    var win = getWindow(step);
+    var sn = step.snippet;
+    r.range.innerHTML =
+      "Lines <b>" + win.start + "</b>–<b>" + win.end + "</b> of " + sn.totalLines +
+      " · function <b>" + step.startLine + "</b>–<b>" + step.endLine + "</b>";
+  }
+
+  function syncStep(step) {
+    var r = refs[step.id];
+    var expanded = state.expanded.has(step.id);
+    r.article.dataset.expanded = String(expanded);
+    r.head.setAttribute("aria-expanded", String(expanded));
+    r.body.hidden = !expanded;
+
+    if (expanded) {
+      getWindow(step);
+      renderCode(step);
+      updateRange(step);
+    }
+
+    var count = step.callsites.length;
+    r.markers.textContent = count
+      ? count + " call marker" + (count === 1 ? "" : "s")
+      : "no call markers";
+  }
+
+  function syncAll() {
+    DATA.steps.forEach(syncStep);
+  }
+
+  /* ---------- interactions ---------- */
+
+  function toggleStep(id) {
+    var step = byId(id);
+    if (!step) return;
+    if (state.expanded.has(id)) {
+      state.expanded.delete(id);
+    } else {
+      state.expanded.add(id);
+      if (!state.windows.has(id)) state.windows.set(id, defaultWindow(step));
+    }
+    syncStep(step);
+  }
+
+  function scrollWithoutSmooth(fn) {
+    var root = document.documentElement;
+    var previous = root.style.scrollBehavior;
+    root.style.scrollBehavior = "auto";
+    fn();
+    root.style.scrollBehavior = previous;
+  }
+
+  function growWindow(id, direction) {
+    var step = byId(id);
+    if (!step) return;
+    var win = getWindow(step);
+    var sn = step.snippet;
+    var next;
+
+    if (direction === "up") {
+      next = { start: Math.max(sn.startLine, win.start - 10), end: win.end };
+    } else {
+      next = { start: win.start, end: Math.min(sn.endLine, win.end + 10) };
+    }
+    if (next.start === win.start && next.end === win.end) return;
+
+    var anchor = null;
+    var anchorTop = 0;
+    if (direction === "up") {
+      anchor = refs[id].code.querySelector('.code-row[data-line="' + win.start + '"]');
+      if (anchor) anchorTop = anchor.getBoundingClientRect().top;
+    }
+
+    state.windows.set(id, next);
+    renderCode(step);
+    updateRange(step);
+
+    if (anchor) {
+      var again = refs[id].code.querySelector('.code-row[data-line="' + win.start + '"]');
+      if (again) {
+        var delta = again.getBoundingClientRect().top - anchorTop;
+        scrollWithoutSmooth(function () { window.scrollBy(0, delta); });
+      }
+    }
+  }
+
+  function openAndScroll(id) {
+    var step = byId(id);
+    if (!step) return;
+    state.expanded.add(id);
+    if (!state.windows.has(id)) state.windows.set(id, defaultWindow(step));
+    syncStep(step);
+    setActiveChip(id);
+
+    requestAnimationFrame(function () {
+      var article = document.getElementById("step-" + id);
+      if (!article) return;
+      article.scrollIntoView({ behavior: "smooth", block: "start" });
+      article.dataset.flash = "true";
+      setTimeout(function () { delete article.dataset.flash; }, 1200);
+      try {
+        history.replaceState(null, "", "#" + id);
+      } catch (err) {
+        /* file:// or sandboxed contexts may refuse this; not important */
+      }
+    });
+  }
+
+  function handleAction(button) {
+    var step = byId(button.closest(".step").dataset.step);
+    if (!step) return;
+    var action = button.dataset.action;
+
+    if (action === "fit") {
+      state.windows.set(step.id, defaultWindow(step));
+      renderCode(step);
+      updateRange(step);
+      return;
+    }
+
+    if (action === "whole") {
+      state.windows.set(step.id, {
+        start: step.snippet.startLine,
+        end: step.snippet.endLine
+      });
+      renderCode(step);
+      updateRange(step);
+      return;
+    }
+
+    if (action === "copy") {
+      var win = getWindow(step);
+      var text = step.snippet.lines
+        .filter(function (pair) { return pair[0] >= win.start && pair[0] <= win.end; })
+        .map(function (pair) { return pair[1]; })
+        .join("\n");
+      var lineCount = win.end - win.start + 1;
+      copyText(text, "Copied " + lineCount + " line" + (lineCount === 1 ? "" : "s"));
+      return;
+    }
+
+    if (action === "link") {
+      var url = location.href.split("#")[0] + "#" + step.id;
+      copyText(url, "Link copied");
+    }
+  }
+
+  function applyFilters() {
+    var query = state.query;
+    var visible = Object.create(null);
+    var visibleCount = 0;
+
+    DATA.steps.forEach(function (step) {
+      var repoOk = state.repos.has(step.repo);
+      var haystack = [
+        step.repoName,
+        step.langName,
+        step.file,
+        step.symbol,
+        step.note,
+        step.edge ? step.edge.label : "",
+        step.edge ? step.edge.detail : ""
+      ]
+        .concat(step.callsites.map(function (c) { return c.label; }))
+        .join(" ")
+        .toLowerCase();
+
+      var show = repoOk && (!query || haystack.indexOf(query) !== -1);
+      visible[step.id] = show;
+      refs[step.id].article.hidden = !show;
+      if (show) visibleCount += 1;
+    });
+
+    // A hop only makes sense when both ends of the transition are visible.
+    DATA.steps.forEach(function (step, index) {
+      var hop = refs[step.id].hop;
+      if (!hop) return;
+      var next = DATA.steps[index + 1];
+      hop.hidden = !visible[step.id] || (next ? !visible[next.id] : false);
+    });
+
+    var chips = document.querySelectorAll("#minimap .map-step");
+    for (var i = 0; i < chips.length; i++) {
+      var targetStep = byId(chips[i].dataset.target);
+      if (!targetStep) continue;
+      chips[i].hidden = refs[targetStep.id].article.hidden;
+    }
+
+    document.getElementById("empty").hidden = visibleCount !== 0;
+    updateActiveChip();
+  }
+
+  function copyText(text, message) {
+    function done() { toast(message || "Copied"); }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () {
+        fallbackCopy(text);
+        done();
+      });
+      return;
+    }
+
+    fallbackCopy(text);
+    done();
+  }
+
+  function fallbackCopy(text) {
+    var area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.top = "-1000px";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    try {
+      document.execCommand("copy");
+    } catch (err) {
+      /* ignore */
+    }
+    area.remove();
+  }
+
+  function toast(message) {
+    var node = document.getElementById("toast");
+    node.textContent = message;
+    node.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { node.classList.remove("show"); }, 1800);
+  }
+
+  /* ---------- theme ---------- */
+
+  function applyTheme(theme) {
+    document.documentElement.dataset.theme = theme;
+    var button = document.getElementById("btn-theme");
+    var dark = theme === "dark";
+    button.textContent = dark ? "☀" : "☾";
+    button.title = dark ? "Switch to light theme" : "Switch to dark theme";
+    button.setAttribute("aria-label", button.title);
+  }
+
+  function toggleTheme() {
+    var next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    try {
+      localStorage.setItem(STORAGE_THEME, next);
+    } catch (err) {
+      /* storage may be unavailable */
+    }
+    applyTheme(next);
+  }
+
+  /* ---------- events ---------- */
+
+  function bindEvents() {
+    document.getElementById("repo-filters").addEventListener("click", function (event) {
+      var button = event.target.closest("button[data-repo]");
+      if (!button) return;
+      var id = button.dataset.repo;
+
+      if (id === "all") {
+        state.repos = new Set(DATA.repos.map(function (repo) { return repo.id; }));
+      } else if (state.repos.size === DATA.repos.length) {
+        // First click on a repository isolates it; later clicks toggle.
+        state.repos = new Set([id]);
+      } else if (state.repos.has(id)) {
+        state.repos.delete(id);
+        if (state.repos.size === 0) {
+          state.repos = new Set(DATA.repos.map(function (repo) { return repo.id; }));
+        }
+      } else {
+        state.repos.add(id);
+      }
+
+      syncFilters();
+      applyFilters();
+    });
+
+    document.getElementById("search").addEventListener("input", function () {
+      state.query = this.value.trim().toLowerCase();
+      applyFilters();
+    });
+
+    document.getElementById("btn-expand-all").addEventListener("click", function () {
+      DATA.steps.forEach(function (step) {
+        state.expanded.add(step.id);
+        if (!state.windows.has(step.id)) state.windows.set(step.id, defaultWindow(step));
+      });
+      syncAll();
+    });
+
+    document.getElementById("btn-collapse-all").addEventListener("click", function () {
+      state.expanded.clear();
+      syncAll();
+    });
+
+    document.getElementById("btn-theme").addEventListener("click", toggleTheme);
+
+    document.getElementById("btn-reset-filter").addEventListener("click", function () {
+      state.repos = new Set(DATA.repos.map(function (repo) { return repo.id; }));
+      state.query = "";
+      document.getElementById("search").value = "";
+      syncFilters();
+      applyFilters();
+    });
+
+    document.getElementById("steps").addEventListener("click", function (event) {
+      var more = event.target.closest("[data-more]");
+      if (more) {
+        var moreStep = more.closest(".step");
+        if (moreStep) growWindow(moreStep.dataset.step, more.dataset.more);
+        return;
+      }
+
+      var goto = event.target.closest("[data-goto]");
+      if (goto) {
+        openAndScroll(goto.dataset.goto);
+        return;
+      }
+
+      var action = event.target.closest("[data-action]");
+      if (action) {
+        handleAction(action);
+        return;
+      }
+
+      var head = event.target.closest(".step-head");
+      if (head) {
+        var article = head.closest(".step");
+        if (article) toggleStep(article.dataset.step);
+      }
+    });
+
+    document.getElementById("minimap").addEventListener("click", function (event) {
+      var button = event.target.closest(".map-step");
+      if (button) openAndScroll(button.dataset.target);
+    });
+
+    document.addEventListener("keydown", function (event) {
+      var target = event.target;
+      var typing =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+
+      if (event.key === "Escape" && target && target.id === "search") {
+        target.value = "";
+        state.query = "";
+        applyFilters();
+        target.blur();
+        return;
+      }
+      if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
+
+      if (event.key === "/") {
+        event.preventDefault();
+        document.getElementById("search").focus();
+        return;
+      }
+
+      var visible = DATA.steps.filter(function (step) {
+        return !refs[step.id].article.hidden;
+      });
+      if (!visible.length) return;
+
+      if (event.key === "j" || event.key === "k") {
+        event.preventDefault();
+        var current = -1;
+        for (var i = 0; i < visible.length; i++) {
+          if (refs[visible[i].id].article.contains(document.activeElement)) {
+            current = i;
+            break;
+          }
+        }
+        var nextIndex;
+        if (current === -1) nextIndex = 0;
+        else if (event.key === "j") nextIndex = Math.min(current + 1, visible.length - 1);
+        else nextIndex = Math.max(current - 1, 0);
+        refs[visible[nextIndex].id].head.focus();
+        return;
+      }
+
+      if (event.key === "e") {
+        var focused = null;
+        for (var j = 0; j < visible.length; j++) {
+          if (refs[visible[j].id].article.contains(document.activeElement)) {
+            focused = visible[j];
+            break;
+          }
+        }
+        event.preventDefault();
+        toggleStep((focused || visible[0]).id);
+      }
+    });
+  }
+
+  function setActiveChip(id) {
+    var chips = document.querySelectorAll("#minimap .map-step");
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].dataset.active = String(chips[i].dataset.target === id);
+    }
+  }
+
+  function updateActiveChip() {
+    var visible = DATA.steps.filter(function (step) {
+      return !refs[step.id].article.hidden;
+    });
+    if (!visible.length) {
+      setActiveChip("");
+      return;
+    }
+
+    var current = visible[0];
+    for (var i = 0; i < visible.length; i++) {
+      var top = refs[visible[i].id].article.getBoundingClientRect().top;
+      if (top <= 150) current = visible[i];
+    }
+    setActiveChip(current.id);
+  }
+
+  var chipFrame = false;
+  function onScroll() {
+    if (chipFrame) return;
+    chipFrame = true;
+    requestAnimationFrame(function () {
+      chipFrame = false;
+      updateActiveChip();
+    });
+  }
+
+  function setupScrollSpy() {
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    updateActiveChip();
+  }
+
+  function openFromHash() {
+    var raw = (location.hash || "").replace(/^#/, "");
+    if (!raw) return;
+    var id = raw.indexOf("step-") === 0 ? raw.slice(5) : raw;
+    var step = byId(id);
+    if (!step) return;
+
+    state.expanded.add(id);
+    if (!state.windows.has(id)) state.windows.set(id, defaultWindow(step));
+    syncStep(step);
+
+    setTimeout(function () {
+      var article = document.getElementById("step-" + id);
+      if (article) article.scrollIntoView({ block: "start" });
+    }, 80);
+  }
+
+  function preparePrint() {
+    // Print shows every step even when collapsed on screen; render the code
+    // for hidden steps so the print stylesheet has something to reveal.
+    DATA.steps.forEach(function (step) {
+      if (!state.windows.has(step.id)) state.windows.set(step.id, defaultWindow(step));
+      renderCode(step);
+      updateRange(step);
+    });
+  }
+
+  /* ---------- boot ---------- */
+
+  function init() {
+    document.title = DATA.title + " · Call chain explorer";
+    setText("#page-title", DATA.title);
+    setText("#page-subtitle", DATA.subtitle);
+    setText("#foot-generated", "Generated " + formatDate(DATA.generatedAt));
+    setText("#foot-spec", DATA.specFile);
+
+    renderMeta();
+    renderFilters();
+    renderMinimap();
+    buildSteps();
+    bindEvents();
+
+    if (DATA.steps.length) {
+      state.expanded.add(DATA.steps[0].id);
+      state.windows.set(DATA.steps[0].id, defaultWindow(DATA.steps[0]));
+    }
+
+    syncFilters();
+    applyFilters();
+    syncAll();
+    setupScrollSpy();
+    applyTheme(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+    window.addEventListener("beforeprint", preparePrint);
+    openFromHash();
+  }
+
+  try {
+    init();
+  } catch (err) {
+    fatal("Failed to initialise the viewer: " + (err && err.stack ? err.stack : err));
+  }
+})();
+
+    </script>
+  </body>
+</html>
